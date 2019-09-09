@@ -1430,9 +1430,6 @@ while 1:
 
     # ---------------- new game dialog ----------------
     elif window == "new game":
-        cols = [20, 150, 190, 460]
-        rows = [15, 60, 105, 150, 195, 245, 270]
-
         if dialog == "select time":
             cols = [150, 195]
             rows = [15, 70, 105, 160, 200]
@@ -1567,6 +1564,10 @@ while 1:
                             dialog = ""
                         break
         else:
+
+            cols = [20, 150, 190, 280, 460]
+            rows = [15, 60, 105, 150, 195, 225, 255, 270]
+
             txt_x, _ = txt_large("Mode:", cols[1], rows[0]+5, grey)
             human_game_button_area = button(
                 "Human",
@@ -1643,20 +1644,21 @@ while 1:
 
             chess960_button_area = button(
                 "Chess960",
-                cols[-1],
-                rows[4],
+                cols[1],
+                rows[3],
                 text_color=white,
                 color=darkergreen if chess960 else grey,
-                align='right'
             )
+
             if syzygy_available:
                 syzygy_button_area = button(
                     "Syzygy",
-                    370,
-                    chess960_button_area[3] + 5,
+                    chess960_button_area[2] + 5,
+                    rows[3],
                     text_color=white,
                     color=darkergreen if enable_syzygy else grey,
                 )
+
             if use_board_position:
                 _, _, use_board_position_button_x, _ = use_board_position_button_area
                 side_to_move_button_area = button(
@@ -1672,54 +1674,59 @@ while 1:
                 depth_less_button_area = None
                 depth_more_button_area = None
             else:
-                txt_large("Engine: {}".format(engine), cols[1], rows[3]+5, grey)
+                txt_large("Engine: {}".format(engine), cols[1], rows[4]+5, grey)
                 select_engine_button_area = button(
                     '...',
                     cols[-1],
-                    rows[3],
+                    rows[4],
                     text_color=white,
                     color=darkergreen,
                     padding=(0,5,0,5),
                     align='right'
                 )
-                _, txt_y = txt("Book: {}".format(book), cols[0], rows[4], grey)
+
+                book_repr = book
+                if len(book_repr) > 20:
+                    book_repr = "{}...".format(book_repr[:20])
+                _, txt_y = txt_large("Book: {}".format(book_repr), cols[1], rows[5]+5, grey)
                 select_book_button_area = button(
                     '...',
-                    cols[0],
-                    txt_y + 5,
+                    cols[-1],
+                    rows[5],
                     text_color=white,
                     color=darkergreen,
                     padding=(0,5,0,5),
+                    align='right'
                 )
 
-                txt_x, txt_y = txt_large("Depth:", cols[1], rows[4]+5, green)
-                difficulty_button_area = button('{:02d}'.format(difficulty + 1), txt_x + 30, rows[4], color=grey, text_color=white)
-                depth_less_button_area = button("<", difficulty_button_area[0]-5, rows[4], text_color=grey, color=white, align='right')
-                depth_more_button_area = button(">", difficulty_button_area[2]+5, rows[4], text_color=grey, color=white)
+                txt_x, txt_y = txt("Depth:", cols[0], rows[4]+8, green)
+                difficulty_button_area = button('{:02d}'.format(difficulty + 1), cols[0]+20, rows[5], color=grey, text_color=white)
+                depth_less_button_area = button("<", difficulty_button_area[0]-5, rows[5], text_color=grey, color=white, align='right')
+                depth_more_button_area = button(">", difficulty_button_area[2]+5, rows[5], text_color=grey, color=white)
 
-                x0 = depth_more_button_area[2]
+                x0 = txt_x + 5
                 y0 = rows[4] + 8
                 if not human_game:
                     if difficulty == 0:
                         txt("Easiest", x0, y0, grey)
                     elif difficulty < 4:
-                        txt("Easy", x0 , y0, grey)
+                        txt("Easy", x0, y0, grey)
                     elif difficulty > 18:
-                        txt("Very hard", x0, y0, grey)
+                        txt("Hardest", x0, y0, grey)
                     elif difficulty > 10:
                         txt("Hard", x0, y0, grey)
                     else:
                         txt("Normal", x0, y0, grey)
 
             if not human_game:
-                txt_large("Color to play:", cols[2], rows[5], green)
+                txt_x, _ = txt_large("Play as:", cols[1], rows[6]+5, green)
+                sprite_color = "black"
                 if play_white:
-                    color_button_area = show("white", cols[2], rows[6])
-                else:
-                    color_button_area = show("black", cols[2], rows[6])
+                    sprite_color = "white"
+                color_button_area = show(sprite_color, txt_x + 5, rows[6])
 
-            back_button_area = show("back", cols[0], rows[6])
-            start_button_area = show("start", cols[-1]-100, rows[6])
+            back_button_area = show("back", cols[0], rows[-1])
+            start_button_area = show("start", cols[-1]-100, rows[-1])
 
             if left_click:
                 if coords_in(x, y, human_game_button_area):
