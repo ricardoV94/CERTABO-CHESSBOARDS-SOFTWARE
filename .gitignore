@@ -7,13 +7,13 @@ ready.txt
 record.bin
 
 *.spec
-
 /.idea
 /build
 /dist
 
 /venv
 /books
+/engines
 
 local_constants.py
 
