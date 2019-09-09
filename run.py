@@ -2,7 +2,7 @@ from __future__ import print_function
 import sys
 import argparse
 
-DEBUG = True
+DEBUG = False
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -152,7 +152,10 @@ usb_proc = subprocess.Popen(usb_command)
 if not DEBUG:
     tt.sleep(1)  # time to make stable COMx connection
 
-os.environ["SDL_VIDEO_WINDOW_POS"] = "90,20"
+icon = pygame.image.load('certabo.png')
+pygame.display.set_icon(icon)
+
+os.environ["SDL_VIDEO_WINDOW_POS"] = "90,50"
 pygame.mixer.init()
 pygame.init()
 
