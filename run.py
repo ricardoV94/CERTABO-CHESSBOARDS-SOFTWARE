@@ -2,7 +2,7 @@ from __future__ import print_function
 import sys
 import argparse
 
-DEBUG = False
+DEBUG = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -24,6 +24,7 @@ import subprocess
 import logging
 import logging.handlers
 import Queue
+import time
 from constants import CERTABO_SAVE_PATH, CERTABO_DATA_PATH, MAX_DEPTH_DEFAULT
 
 
@@ -34,12 +35,13 @@ for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
         pass
 
 
-logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
-logger = logging.getLogger()
-filehandler = logging.handlers.TimedRotatingFileHandler(
-    os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
-)
-logger.addHandler(filehandler)
+if not DEBUG:
+    logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
+    logger = logging.getLogger()
+    filehandler = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
+    )
+    logger.addHandler(filehandler)
 
 
 import codes
@@ -217,6 +219,7 @@ names = (
     "white_queen",
     "white_rook",
     "terminal",
+    "terminal2",
     "logo",
     "chessboard_xy",
     "new_game",
@@ -588,6 +591,10 @@ send_leds()
 
 poweroff_time = datetime.now()
 
+time_white_left = -99
+time_black_left = -99
+waiting_for_player = -99
+clock = pygame.time.Clock()
 while 1:
     t = datetime.now()  # current time
 
@@ -1021,7 +1028,38 @@ while 1:
                 else:
                     logging.info("found unknown piece, filter processing")
 
-        show("terminal", 179, 3)
+        cols = [110]
+        rows = [5, 40]
+
+        # Time only starts after first move
+        if not time_constraint == 'unlimited':
+
+            if len(chessboard.move_stack) > 1:
+                turn = chessboard.turn
+                if waiting_for_player == turn:
+                    clock.tick()
+                    change = float(clock.get_time()) / 1000
+                    if turn == 1:
+                        time_white_left -= change
+                    else:
+                        time_black_left -= change
+                else:
+                    if not waiting_for_player == -99:
+                        if waiting_for_player == 1:
+                            time_white_left += time_increment_seconds
+                        else:
+                            time_black_left += time_increment_seconds
+                    waiting_for_player = turn
+                    clock.tick()
+
+            black_minutes = int(time_black_left // 60)
+            black_seconds = int(time_black_left % 60)
+            white_minutes = int(time_white_left // 60)
+            white_seconds = int(time_white_left % 60)
+            button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=grey, text_color=white, padding=(1,1,1,1))
+            button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=lightestgrey, text_color=black, padding=(1, 1, 1, 1))
+
+        show("terminal2", 179, 3)
 
         txt(terminal_lines[0], 183, 3, terminal_text_color)
         txt(terminal_lines[1], 183, 18, terminal_text_color)
@@ -1078,6 +1116,7 @@ while 1:
                         board_click = ""
 
         else:  # usual game process
+
             if not human_game and do_ai_move and not chessboard.is_game_over():
                 do_ai_move = False
                 got_polyglot_result = False
@@ -1183,7 +1222,6 @@ while 1:
                         
                 send_leds(message)
 
-
                 # banner_do_move = True
                 if not args.robust:
                     show_board_and_animated_move(chessboard.fen(), ai_move, 178, 40)
@@ -1215,6 +1253,7 @@ while 1:
 
 
                     # user move
+
             if do_user_move and not chessboard.is_game_over():
                 do_user_move = False
                 try:
@@ -1801,6 +1840,21 @@ while 1:
                     waiting_for_user_move = False
                     game_process_just_started = True
                     banner_place_pieces = True
+
+                    # Time variables
+                    if time_constraint == 'blitz':
+                        time_total_minutes = 5
+                        time_increment_seconds = 0
+                    elif time_constraint == 'rapid':
+                        time_total_minutes = 10
+                        time_increment_seconds = 0
+                    elif time_constraint == 'classical':
+                        time_total_minutes = 15
+                        time_increment_seconds = 15
+                    time_white_left = float(time_total_minutes * 60)
+                    time_black_left = float(time_total_minutes * 60)
+                    waiting_for_player = -99
+
                     if args.publish:
                         make_publisher()
 

@@ -84,6 +84,7 @@ class EngineThread(threading.Thread):
             pass
         if syzygy_path:
             self.engine_parameters["SyzygyPath"] = syzygy_path
+        # self.engine_parameters['Minimum Thinking Time'] = 5000
         self.move_history = move_history
         self.please_stop = False
         self.stop_engine = False
@@ -101,6 +102,7 @@ class EngineThread(threading.Thread):
         self.engine = Engine(
             depth=self.difficulty, binary=self.engine_path, param=self.engine_parameters, chess960=self.chess960
         )
+        # print(self.engine_parameters)
         logging.info("Setting position to %s", self.move_history)
         self.engine.setposition(self.move_history, starting_position=self.starting_position)
         self.engine.go()
