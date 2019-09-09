@@ -24,7 +24,7 @@ import subprocess
 import logging
 import logging.handlers
 import Queue
-import time
+
 from constants import CERTABO_SAVE_PATH, CERTABO_DATA_PATH, MAX_DEPTH_DEFAULT
 
 
@@ -1031,9 +1031,9 @@ while 1:
         cols = [110]
         rows = [5, 40]
 
-        # Time only starts after first move
+        # Make this a function so that I can call aslo inside the AI Loop
         if not time_constraint == 'unlimited':
-
+            # Let time only start after both players do first move (what to do about saved games?)
             if len(chessboard.move_stack) > 1:
                 turn = chessboard.turn
                 if waiting_for_player == turn:
@@ -1041,8 +1041,14 @@ while 1:
                     change = float(clock.get_time()) / 1000
                     if turn == 1:
                         time_white_left -= change
+                        if time_white_left <= 0:
+                            pass
+                            # Add time over condition
                     else:
                         time_black_left -= change
+                        if time_black_left <= 0:
+                            pass
+                            # Add time over condition here
                 else:
                     if not waiting_for_player == -99:
                         if waiting_for_player == 1:
@@ -1056,8 +1062,14 @@ while 1:
             black_seconds = int(time_black_left % 60)
             white_minutes = int(time_white_left // 60)
             white_seconds = int(time_white_left % 60)
-            button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=grey, text_color=white, padding=(1,1,1,1))
-            button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=lightestgrey, text_color=black, padding=(1, 1, 1, 1))
+            color = grey
+            if time_black_left <= 10:
+                color = red
+            button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=color, text_color=white, padding=(1,1,1,1))
+            color = lightestgrey
+            if time_white_left <= 10:
+                color = red
+            button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
 
         show("terminal2", 179, 3)
 
@@ -1139,8 +1151,8 @@ while 1:
                         syzygy_path=args.syzygy if enable_syzygy else None,
                     )
                     proc.start()
-                    # print "continues..."
 
+                    # Move this inside while loop
                     show_board(chessboard.fen(), 178, 40)
                     pygame.draw.rect(
                         scr,
@@ -1167,9 +1179,7 @@ while 1:
                     pygame.display.flip()  # copy to screen
 
                     got_fast_result = False
-                    # while stockfish.th.is_alive(): # thinking
                     while proc.is_alive():
-
                         # event from system & keyboard
                         for event in pygame.event.get():  # all values in event list
                             if event.type == pygame.QUIT:
