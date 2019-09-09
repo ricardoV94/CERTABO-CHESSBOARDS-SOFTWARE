@@ -2,7 +2,6 @@
 
 /stockfish_all/
 
-
 calibration.bin
 ready.txt
 record.bin
@@ -13,8 +12,9 @@ record.bin
 /build
 /dist
 
+/venv
+/books
+
 local_constants.py
 
 *.pyc
-
-venv
