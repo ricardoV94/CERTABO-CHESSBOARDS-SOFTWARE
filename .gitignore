@@ -16,3 +16,5 @@ record.bin
 local_constants.py
 
 *.pyc
+
+venv
