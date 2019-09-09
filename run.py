@@ -2,7 +2,7 @@ from __future__ import print_function
 import sys
 import argparse
 
-DEBUG = False
+DEBUG = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -92,18 +92,6 @@ def publish():
     pgn_queue.put(generate_pgn())
 
 
-def txt(s, x, y, color):
-    img = font.render(s, 22, color)  # string, blend, color, background color
-    pos = x * x_multiplier, y * y_multiplier
-    scr.blit(img, pos)
-
-
-def txt_large(s, x, y, color):
-    img = font_large.render(s, 22, color)  # string, blend, color, background color
-    pos = x * x_multiplier, y * y_multiplier
-    scr.blit(img, pos)
-
-
 def do_poweroff(proc):
     if args.publish:
         publisher.stop()
@@ -161,7 +149,8 @@ if portname is not None:
     usb_command.extend(["--port", portname])
 logging.debug("Calling %s", usb_command)
 usb_proc = subprocess.Popen(usb_command)
-tt.sleep(1)  # time to make stable COMx connection
+if not DEBUG:
+    tt.sleep(1)  # time to make stable COMx connection
 
 os.environ["SDL_VIDEO_WINDOW_POS"] = "90,20"
 pygame.mixer.init()
@@ -295,8 +284,36 @@ def play_sound(sound_name):
 
 # show sprite by name from names
 def show(name, x, y):
-    scr.blit(sprite[name], (x * x_multiplier, y * y_multiplier))
+    img = sprite[name]
+    scr.blit(img, (x * x_multiplier, y * y_multiplier))
+    widget_width, widget_height = img.get_size()
+    return (
+        x,
+        y,
+        x + int(widget_width // x_multiplier),
+        y + int(widget_height // y_multiplier)
+    )
 
+def txt(s, x, y, color):
+    img = font.render(s, 22, color)  # string, blend, color, background color
+    pos = x * x_multiplier, y * y_multiplier
+    scr.blit(img, pos)
+    text_width, text_height = img.get_size()
+    return (
+        x + int(text_width // x_multiplier),
+        y + int(text_height // y_multiplier)
+    )
+
+
+def txt_large(s, x, y, color):
+    img = font_large.render(s, 22, color)  # string, blend, color, background color
+    pos = x * x_multiplier, y * y_multiplier
+    scr.blit(img, pos)
+    text_width, text_height = img.get_size()
+    return (
+        x + int(text_width // x_multiplier),
+        y + int(text_height // y_multiplier)
+    )
 
 def button(
     text,
@@ -307,11 +324,16 @@ def button(
     text_color=grey,
     font=font_large,
     font_size=22,
+    align='center'
 ):
     ptop, pleft, pbottom, pright = padding
     text_width, text_height = font.size(text)
     widget_width = pleft * x_multiplier + text_width + pright * x_multiplier
     widget_height = ptop * y_multiplier + text_height + pbottom * y_multiplier
+
+    if align == 'right':
+        x -= int(widget_width/2)
+
     pygame.draw.rect(
         scr, color, (x * x_multiplier, y * y_multiplier, widget_width, widget_height)
     )
@@ -502,6 +524,9 @@ do_ai_move = True
 do_user_move = False
 conversion_dialog = False
 human_game = False
+time_constraint = 'unlimited'
+time_total_minutes = 5
+time_increment_seconds = 8
 use_board_position = False
 renew = True
 left_click = False
@@ -554,7 +579,8 @@ send_leds('\xff' * 8)
 scr.fill(white)  # clear screen
 show("start-up-logo", 7, 0)
 pygame.display.flip()  # copy to screen
-tt.sleep(2)
+if not DEBUG:
+    tt.sleep(2)
 send_leds()
 
 poweroff_time = datetime.now()
@@ -1404,7 +1430,55 @@ while 1:
 
     # ---------------- new game dialog ----------------
     elif window == "new game":
-        if dialog == "select_engine":
+        cols = [20, 150, 190, 460]
+        rows = [15, 60, 105, 150, 195, 245, 270]
+
+        if dialog == "select time":
+            cols = [150, 195]
+            rows = [15, 70, 105, 160, 200]
+
+            show("hide_back", 0, 0)
+            button("Custom Time Settings", cols[0], rows[0], color=green, text_color=white)
+            txt_large("Minutes per side:", cols[0], rows[1], black)
+            minutes_button_area = button('{}'.format(time_total_minutes), cols[1], rows[2], color=grey, text_color=white)
+            minutes_less_button_area = button("<", minutes_button_area[0] - 5, rows[2], text_color=grey, color=white, align='right', padding=(5, 2, 5, 2))
+            minutes_less2_button_area = button("<<", minutes_less_button_area[0] - 5, rows[2], text_color=grey, color=white, align='right', padding=(5, 0, 5, 0))
+            minutes_more_button_area = button(">", minutes_button_area[2] + 5, rows[2], text_color=grey, color=white, padding=(5, 2, 5, 2))
+            minutes_more2_button_area = button(">>", minutes_more_button_area[2] + 5, rows[2], text_color=grey, color=white, padding=(5, 0, 5, 0))
+
+            txt_large("Increment in seconds:", cols[0], rows[3], black)
+            seconds_button_area = button('{}'.format(time_increment_seconds), cols[1], rows[4], color=grey, text_color=white)
+            seconds_less_button_area = button("<", seconds_button_area[0] - 5, rows[4], text_color=grey, color=white, align='right', padding=(5, 2, 5, 2))
+            seconds_less2_button_area = button("<<", seconds_less_button_area[0] - 5, rows[4], text_color=grey, color=white, align='right', padding=(5, 0, 5, 0))
+            seconds_more_button_area = button(">", seconds_button_area[2] + 5, rows[4], text_color=grey, color=white, padding=(5, 2, 5, 2))
+            seconds_more2_button_area = button(">>", seconds_more_button_area[2] + 5, rows[4], text_color=grey, color=white, padding=(5, 0, 5, 0))
+
+            done_button_area = button("Done", 415, 275, color=darkergreen, text_color=white)
+
+            if left_click:
+                if coords_in(x, y, minutes_less_button_area):
+                    time_total_minutes -= 1
+                elif coords_in(x, y, minutes_less2_button_area):
+                    time_total_minutes -= 10
+                elif coords_in(x, y, minutes_more_button_area):
+                    time_total_minutes += 1
+                elif coords_in(x, y, minutes_more2_button_area):
+                    time_total_minutes += 10
+                elif coords_in(x, y, seconds_less_button_area):
+                    time_increment_seconds -= 1
+                elif coords_in(x, y, seconds_less2_button_area):
+                    time_increment_seconds -= 10
+                elif coords_in(x, y, seconds_more_button_area):
+                    time_increment_seconds += 1
+                elif coords_in(x, y, seconds_more2_button_area):
+                    time_increment_seconds += 10
+
+                time_total_minutes = max(time_total_minutes, 1)
+                time_increment_seconds = max(time_increment_seconds, 0)
+
+                if coords_in(x, y, done_button_area):
+                    dialog = ""
+        elif dialog == "select_engine":
             engines_per_page = 6
             show("hide_back", 0, 0)
             engines = get_engine_list()
@@ -1493,11 +1567,11 @@ while 1:
                             dialog = ""
                         break
         else:
-            txt_large("Mode:", 150, 20, grey)
+            txt_x, _ = txt_large("Mode:", cols[1], rows[0]+5, grey)
             human_game_button_area = button(
                 "Human",
-                210,
-                15,
+                txt_x + 15,
+                rows[0],
                 text_color=white,
                 color=darkergreen if human_game else grey,
             )
@@ -1505,7 +1579,7 @@ while 1:
             computer_game_button_area = button(
                 "Engine",
                 human_game_button_x + 5,
-                15,
+                rows[0],
                 text_color=white,
                 color=darkergreen if not human_game else grey,
             )
@@ -1513,23 +1587,67 @@ while 1:
             flip_board_button_area = button(
                 "Flip board",
                 computer_game_button_x + 5,
-                15,
+                rows[0],
                 text_color=white,
                 color=darkergreen if rotate180 else grey,
             )
             use_board_position_button_area = button(
                 "Use board position",
-                150,
-                human_game_button_area[3] + 5,
+                cols[1],
+                rows[1],
                 text_color=white,
                 color=darkergreen if use_board_position else grey,
             )
+            # txt_large("Time:", 150, use_board_position_button_area[3]+5, grey)
+
+            txt_x, _ = txt_large("Time:", cols[1], rows[2] + 5, grey)
+
+            time_unlimited_button_area = button(
+                u"\u221E",
+                txt_x + 5,
+                rows[2],
+                text_color=white,
+                color=darkergreen if time_constraint == 'unlimited' else grey,
+                padding=(5, 10, 5, 10)
+            )
+            h_gap = 4
+            time_blitz_button_area = button(
+                "5+0",
+                time_unlimited_button_area[2]+h_gap,
+                rows[2],
+                text_color=white,
+                color=darkergreen if time_constraint == 'blitz' else grey,
+            )
+            time_rapid_button_area = button(
+                "10+0",
+                time_blitz_button_area[2]+h_gap,
+                rows[2],
+                text_color=white,
+                color=darkergreen if time_constraint == 'rapid' else grey,
+            )
+            time_classical_button_area = button(
+                "15+15",
+                time_rapid_button_area[2]+h_gap,
+                rows[2],
+                text_color=white,
+                color=darkergreen if time_constraint == 'classical' else grey,
+            )
+
+            time_custom_button_area = button(
+                "Other",
+                time_classical_button_area[2]+h_gap,
+                rows[2],
+                text_color=white,
+                color=darkergreen if time_constraint == 'custom' else grey,
+            )
+
             chess960_button_area = button(
                 "Chess960",
-                370,
-                135,
+                cols[-1],
+                rows[4],
                 text_color=white,
                 color=darkergreen if chess960 else grey,
+                align='right'
             )
             if syzygy_available:
                 syzygy_button_area = button(
@@ -1544,7 +1662,7 @@ while 1:
                 side_to_move_button_area = button(
                     "White to move" if side_to_move == "white" else "Black to move",
                     use_board_position_button_x + 5,
-                    human_game_button_area[3] + 5,
+                    rows[1],
                     text_color=white if side_to_move == "black" else black,
                     color=black if side_to_move == "black" else lightestgrey,
                 )
@@ -1554,55 +1672,54 @@ while 1:
                 depth_less_button_area = None
                 depth_more_button_area = None
             else:
-                txt_large("Depth:", 203, 130, green)
-                button('{:02d}'.format(difficulty + 1), 220, 157, color=grey, text_color=white)
-                depth_less_button_area = button("<", 189, 156, text_color=grey, color=white)
-                depth_more_button_area = button(">", 265, 156, text_color=grey, color=white)
-                txt_large("Engine: {}".format(engine), 150, 100, grey)
-                txt("Book: {}".format(book), 10, 165, grey)
-                pygame.draw.rect(
-                    scr,
-                    darkergreen,
-                    (
-                        440 * x_multiplier,
-                        102 * y_multiplier,
-                        25 * x_multiplier,
-                        25 * y_multiplier,
-                    ),
+                txt_large("Engine: {}".format(engine), cols[1], rows[3]+5, grey)
+                select_engine_button_area = button(
+                    '...',
+                    cols[-1],
+                    rows[3],
+                    text_color=white,
+                    color=darkergreen,
+                    padding=(0,5,0,5),
+                    align='right'
                 )
-                txt_large("...", 445, 100, white)
-                pygame.draw.rect(
-                    scr,
-                    darkergreen,
-                    (
-                        10 * x_multiplier,
-                        142 * y_multiplier,
-                        25 * x_multiplier,
-                        25 * y_multiplier,
-                    ),
+                _, txt_y = txt("Book: {}".format(book), cols[0], rows[4], grey)
+                select_book_button_area = button(
+                    '...',
+                    cols[0],
+                    txt_y + 5,
+                    text_color=white,
+                    color=darkergreen,
+                    padding=(0,5,0,5),
                 )
-                txt_large("...", 15, 140, white)
-                x0 = 213
+
+                txt_x, txt_y = txt_large("Depth:", cols[1], rows[4]+5, green)
+                difficulty_button_area = button('{:02d}'.format(difficulty + 1), txt_x + 30, rows[4], color=grey, text_color=white)
+                depth_less_button_area = button("<", difficulty_button_area[0]-5, rows[4], text_color=grey, color=white, align='right')
+                depth_more_button_area = button(">", difficulty_button_area[2]+5, rows[4], text_color=grey, color=white)
+
+                x0 = depth_more_button_area[2]
+                y0 = rows[4] + 8
                 if not human_game:
                     if difficulty == 0:
-                        txt("Easiest", x0, 191, grey)
+                        txt("Easiest", x0, y0, grey)
                     elif difficulty < 4:
-                        txt("Easy", x0 + 6, 191, grey)
+                        txt("Easy", x0 , y0, grey)
                     elif difficulty > 18:
-                        txt("Very hard", x0 - 10, 191, grey)
+                        txt("Very hard", x0, y0, grey)
                     elif difficulty > 10:
-                        txt("Hard", x0 + 6, 191, grey)
+                        txt("Hard", x0, y0, grey)
                     else:
-                        txt("Normal", x0, 191, grey)
+                        txt("Normal", x0, y0, grey)
 
-            show("back", 14, 269)
-            show("start", 363, 269)
             if not human_game:
-                txt_large("Color to play:", 175, 232, green)
+                txt_large("Color to play:", cols[2], rows[5], green)
                 if play_white:
-                    show("white", 184, 269)
+                    color_button_area = show("white", cols[2], rows[6])
                 else:
-                    show("black", 184, 269)
+                    color_button_area = show("black", cols[2], rows[6])
+
+            back_button_area = show("back", cols[0], rows[6])
+            start_button_area = show("start", cols[-1]-100, rows[6])
 
             if left_click:
                 if coords_in(x, y, human_game_button_area):
@@ -1613,6 +1730,13 @@ while 1:
                     rotate180 = not rotate180
                 if coords_in(x, y, use_board_position_button_area):
                     use_board_position = not use_board_position
+                for time_button, time_string in zip((time_unlimited_button_area, time_blitz_button_area, time_rapid_button_area, time_classical_button_area),
+                                                    ('unlimited', 'blitz', 'rapid', 'classical')):
+                    if coords_in(x, y, time_button):
+                        time_constraint = time_string
+                if coords_in(x, y, time_custom_button_area):
+                    dialog = "select time"
+                    time_constraint = 'custom'
                 if coords_in(x, y, chess960_button_area):
                     chess960 = not chess960
                 if syzygy_available and coords_in(x, y, syzygy_button_area):
@@ -1630,50 +1754,45 @@ while 1:
                 if use_board_position:
                     if coords_in(x, y, side_to_move_button_area):
                         side_to_move = "white" if side_to_move == "black" else "black"
-                if 102 < y < 127:
-                    if 440 < x < 465:
-                        dialog = "select_engine"
-                        current_engine_page = 0
-                if 142 < y < 167:
-                    if 10 < x < 35:
-                        dialog = "select_book"
-                if 268 < y < (275 + 31):
-                    if 14 < x < 109:  # <- back
+                if coords_in(x, y, select_engine_button_area):
+                    dialog = "select_engine"
+                    current_engine_page = 0
+                if coords_in(x, y, select_book_button_area):
+                    dialog = "select_book"
+
+                if coords_in(x, y, color_button_area):
+                    play_white = not play_white
+
+                if coords_in(x, y, back_button_area):
                         window = "home"
 
-                    if 174 < x < 292:  # black/white toggle
-                        if play_white:
-                            play_white = False
+                if coords_in(x, y, start_button_area):
+                    window = "game"
+                    if resuming_new_game:
+                        resuming_new_game = False
+                    else:
+                        if not use_board_position:
+                            chessboard = chess.Board()
+                            starting_position = chessboard.fen()
                         else:
-                            play_white = True
+                            chessboard = chess.Board(chess960=chess960)
+                            chessboard.clear()
+                            chessboard.set_board_fen(board_state.split()[0])
+                            chessboard.turn = side_to_move == 'white'
+                            chessboard.set_castling_fen('KQkq')
+                            starting_position = chessboard.fen()
+                    terminal_print("New game, depth={}".format(difficulty + 1))
+                    previous_board_click = ""
+                    board_click = ""
+                    do_user_move = False
+                    do_ai_move = False
 
-                    if 365 < x < 467:  # start game ->
-                        window = "game"
-                        if resuming_new_game:
-                            resuming_new_game = False
-                        else:
-                            if not use_board_position:
-                                chessboard = chess.Board()
-                                starting_position = chessboard.fen()
-                            else:
-                                chessboard = chess.Board(chess960=chess960)
-                                chessboard.clear()
-                                chessboard.set_board_fen(board_state.split()[0])
-                                chessboard.turn = side_to_move == 'white'
-                                chessboard.set_castling_fen('KQkq')
-                                starting_position = chessboard.fen()
-                        terminal_print("New game, depth={}".format(difficulty + 1))
-                        previous_board_click = ""
-                        board_click = ""
-                        do_user_move = False
-                        do_ai_move = False
-
-                        conversion_dialog = False
-                        waiting_for_user_move = False
-                        game_process_just_started = True
-                        banner_place_pieces = True
-                        if args.publish:
-                            make_publisher()
+                    conversion_dialog = False
+                    waiting_for_user_move = False
+                    game_process_just_started = True
+                    banner_place_pieces = True
+                    if args.publish:
+                        make_publisher()
 
     left_click = False
     old_left_click = mbutton[0]
