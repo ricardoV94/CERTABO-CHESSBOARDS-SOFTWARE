@@ -1,18 +1,12 @@
 from __future__ import print_function
-import cPickle as pickle
-import os  # , Queue
-import time
-import threading
+import os
 import platform
 import json
-import chess
 from constants import ENGINE_PATH
 
 from pystockfish import *
 
 TO_EXE = True
-
-# import multiprocessing
 
 # Contempt Integer, Default: 0, Min: -100, Max: 100
 # Roughly equivalent to "optimism." Positive values of contempt favor more "risky" play,
@@ -84,7 +78,8 @@ class EngineThread(threading.Thread):
             pass
         if syzygy_path:
             self.engine_parameters["SyzygyPath"] = syzygy_path
-        # self.engine_parameters['Minimum Thinking Time'] = 5000
+
+        # self.engine_parameters['Slow Mover'] = 1000  # Not sure if this is working
         self.move_history = move_history
         self.please_stop = False
         self.stop_engine = False
@@ -102,7 +97,7 @@ class EngineThread(threading.Thread):
         self.engine = Engine(
             depth=self.difficulty, binary=self.engine_path, param=self.engine_parameters, chess960=self.chess960
         )
-        # print(self.engine_parameters)
+
         logging.info("Setting position to %s", self.move_history)
         self.engine.setposition(self.move_history, starting_position=self.starting_position)
         self.engine.go()
