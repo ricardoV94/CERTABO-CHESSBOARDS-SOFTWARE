@@ -2,8 +2,8 @@ from __future__ import print_function
 import sys
 import argparse
 
-DEBUG = True
-DEBUG_FAST = True
+DEBUG = False
+DEBUG_FAST = False
 
 TO_EXE = getattr(sys, "frozen", False)
 
