@@ -595,6 +595,7 @@ time_white_left = -99
 time_black_left = -99
 waiting_for_player = -99
 clock = pygame.time.Clock()
+game_overtime = False
 while 1:
     t = datetime.now()  # current time
 
@@ -1028,13 +1029,21 @@ while 1:
                 else:
                     logging.info("found unknown piece, filter processing")
 
-        cols = [110]
-        rows = [5, 40]
+        def run_game_clock():
+            # Make this a class
+            global chessboard
+            global time_constraint
+            global waiting_for_player
+            global time_white_left
+            global time_black_left
+            global clock
 
-        # Make this a function so that I can call aslo inside the AI Loop
-        if not time_constraint == 'unlimited':
+            if time_constraint == 'unlimited':
+                return
+
             # Let time only start after both players do first move (what to do about saved games?)
             if len(chessboard.move_stack) > 1:
+
                 turn = chessboard.turn
                 if waiting_for_player == turn:
                     clock.tick()
@@ -1049,6 +1058,7 @@ while 1:
                         if time_black_left <= 0:
                             pass
                             # Add time over condition here
+
                 else:
                     if not waiting_for_player == -99:
                         if waiting_for_player == 1:
@@ -1058,20 +1068,26 @@ while 1:
                     waiting_for_player = turn
                     clock.tick()
 
+            # Display time
+            cols = [110]
+            rows = [5, 40]
+
             black_minutes = int(time_black_left // 60)
             black_seconds = int(time_black_left % 60)
-            white_minutes = int(time_white_left // 60)
-            white_seconds = int(time_white_left % 60)
             color = grey
             if time_black_left <= 10:
                 color = red
             button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=color, text_color=white, padding=(1,1,1,1))
+
+            white_minutes = int(time_white_left // 60)
+            white_seconds = int(time_white_left % 60)
             color = lightestgrey
             if time_white_left <= 10:
                 color = red
             button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
 
-        show("terminal2", 179, 3)
+        run_game_clock()
+        show("terminal", 179, 3)
 
         txt(terminal_lines[0], 183, 3, terminal_text_color)
         txt(terminal_lines[1], 183, 18, terminal_text_color)
@@ -1129,6 +1145,7 @@ while 1:
 
         else:  # usual game process
 
+            # AI MOVE
             if not human_game and do_ai_move and not chessboard.is_game_over():
                 do_ai_move = False
                 got_polyglot_result = False
@@ -1151,33 +1168,6 @@ while 1:
                         syzygy_path=args.syzygy if enable_syzygy else None,
                     )
                     proc.start()
-
-                    # Move this inside while loop
-                    show_board(chessboard.fen(), 178, 40)
-                    pygame.draw.rect(
-                        scr,
-                        lightgrey,
-                        (
-                            229 * x_multiplier,
-                            79 * y_multiplier,
-                            200 * x_multiplier,
-                            78 * y_multiplier,
-                        ),
-                    )
-                    pygame.draw.rect(
-                        scr,
-                        white,
-                        (
-                            227 * x_multiplier,
-                            77 * y_multiplier,
-                            200 * x_multiplier,
-                            78 * y_multiplier,
-                        ),
-                    )
-                    txt_large("Analysing...", 227 + 55, 77 + 8, grey)
-                    show("force-move", 247, 77 + 39)
-                    pygame.display.flip()  # copy to screen
-
                     got_fast_result = False
                     while proc.is_alive():
                         # event from system & keyboard
@@ -1189,17 +1179,40 @@ while 1:
                                 pygame.quit()
                                 sys.exit()
 
+                        # Display board
+                        show_board(chessboard.fen(), 178, 40)
+                        pygame.draw.rect(
+                            scr,
+                            lightgrey,
+                            (
+                                229 * x_multiplier,
+                                79 * y_multiplier,
+                                200 * x_multiplier,
+                                78 * y_multiplier,
+                            ),
+                        )
+                        pygame.draw.rect(
+                            scr,
+                            white,
+                            (
+                                227 * x_multiplier,
+                                77 * y_multiplier,
+                                200 * x_multiplier,
+                                78 * y_multiplier,
+                            ),
+                        )
+                        run_game_clock()
+                        txt_large("Analysing...", 227 + 55, 77 + 8, grey)
+                        show("force-move", 247, 77 + 39)
+                        pygame.display.flip()  # copy to screen
+
                         x, y = pygame.mouse.get_pos()  # mouse position
                         x = x / x_multiplier
                         y = y / y_multiplier
 
                         mbutton = pygame.mouse.get_pressed()
 
-                        # txt_large("%d %d %s"%(x,y,str(mbutton)),0,0,black)
-                        # pygame.display.flip() # copy to screen
-                        if (
-                            mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149
-                        ):  # pressed Force move button
+                        if mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149:  # pressed Force move button
                             logging.info("------------------------------------")
                             proc.stop()
                             proc.join()
@@ -1207,7 +1220,7 @@ while 1:
                             got_fast_result = True
                             break
 
-                        tt.sleep(0.5)
+                        # tt.sleep(0.5)
 
                     if not got_fast_result:
                         ai_move = proc.best_move.lower()
@@ -1261,9 +1274,7 @@ while 1:
                 if chessboard.is_stalemate():
                     logging.info("stalemate!")
 
-
-                    # user move
-
+            # user move
             if do_user_move and not chessboard.is_game_over():
                 do_user_move = False
                 try:
@@ -1616,7 +1627,6 @@ while 1:
                             dialog = ""
                         break
         else:
-
             cols = [20, 150, 190, 280, 460]
             rows = [15, 60, 105, 150, 195, 225, 255, 270]
 
@@ -1864,6 +1874,8 @@ while 1:
                     time_white_left = float(time_total_minutes * 60)
                     time_black_left = float(time_total_minutes * 60)
                     waiting_for_player = -99
+                    game_overtime = False
+                    clock.tick()
 
                     if args.publish:
                         make_publisher()
