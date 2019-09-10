@@ -3,6 +3,7 @@ import sys
 import argparse
 
 DEBUG = True
+DEBUG_FAST = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -35,13 +36,12 @@ for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
         pass
 
 
-if not DEBUG:
-    logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
-    logger = logging.getLogger()
-    filehandler = logging.handlers.TimedRotatingFileHandler(
-        os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
-    )
-    logger.addHandler(filehandler)
+logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
+logger = logging.getLogger()
+filehandler = logging.handlers.TimedRotatingFileHandler(
+    os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
+)
+logger.addHandler(filehandler)
 
 
 import codes
@@ -151,7 +151,8 @@ if portname is not None:
     usb_command.extend(["--port", portname])
 logging.debug("Calling %s", usb_command)
 usb_proc = subprocess.Popen(usb_command)
-if not DEBUG:
+
+if not DEBUG_FAST:
     tt.sleep(1)  # time to make stable COMx connection
 
 icon = pygame.image.load('certabo.png')
@@ -585,7 +586,7 @@ send_leds('\xff' * 8)
 scr.fill(white)  # clear screen
 show("start-up-logo", 7, 0)
 pygame.display.flip()  # copy to screen
-if not DEBUG:
+if not DEBUG_FAST:
     tt.sleep(2)
 send_leds()
 
