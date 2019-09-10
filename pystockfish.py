@@ -225,6 +225,7 @@ class Engine(subprocess.Popen):
         self.param = base_param
         self.param["UCI_Chess960"] = "false" if not chess960 else "true"
         for name, value in list(self.param.items()):
+            # print(name, value)
             self.setoption(name, value)
 
     def newgame(self):
@@ -245,8 +246,9 @@ class Engine(subprocess.Popen):
     def setoption(self, optionname, value):
         self.put("setoption name %s value %s" % (optionname, str(value)))
         stdout = self.isready()
-        if stdout.find("No such") >= 0:
-            print("stockfish was unable to set option %s" % optionname)
+        # Not working because self.isready() will only return readyok
+        # if stdout.find("No such") >= 0:
+        #     print("stockfish was unable to set option %s" % optionname)
 
     def setposition(self, moves=(), starting_position=None):
         """
@@ -413,5 +415,6 @@ class Engine(subprocess.Popen):
         self.put("isready")
         while True:
             text = self.output_queue.get().strip()
+            # print(text)
             if text == "readyok":
                 return text
