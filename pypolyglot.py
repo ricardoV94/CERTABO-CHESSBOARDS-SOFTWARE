@@ -5,7 +5,6 @@ import logging
 import time as tt
 from constants import BOOK_PATH
 
-
 TO_EXE = True
 
 class Finder:
