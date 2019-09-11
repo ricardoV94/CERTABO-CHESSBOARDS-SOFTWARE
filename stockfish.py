@@ -79,7 +79,7 @@ class EngineThread(threading.Thread):
         if syzygy_path:
             self.engine_parameters["SyzygyPath"] = syzygy_path
 
-        # self.engine_parameters['Slow Mover'] = 1000  # Not sure if this is working
+        # self.engine_parameters['Minimum Thinking Time'] = 5000  # This only works for higher depths...
         self.move_history = move_history
         self.please_stop = False
         self.stop_engine = False
