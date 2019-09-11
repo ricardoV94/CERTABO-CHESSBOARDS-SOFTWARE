@@ -220,7 +220,6 @@ names = (
     "white_queen",
     "white_rook",
     "terminal",
-    "terminal2",
     "logo",
     "chessboard_xy",
     "new_game",
