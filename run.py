@@ -119,7 +119,7 @@ class GameClock:
 
         # Let time only start after both players do one move
         moves = len(chessboard.move_stack)
-        if moves - self.initial_moves > 1:
+        if moves - self.initial_moves > -1:  # Set > 1 to start only after 2 moves
 
             turn = chessboard.turn
             # If player changed
