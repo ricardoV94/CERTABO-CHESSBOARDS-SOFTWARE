@@ -25,6 +25,8 @@ import subprocess
 import logging
 import logging.handlers
 import Queue
+from collections import deque
+import random
 
 from constants import CERTABO_SAVE_PATH, CERTABO_DATA_PATH, MAX_DEPTH_DEFAULT
 
@@ -35,12 +37,13 @@ for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
         pass
 
 
-logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
-logger = logging.getLogger()
-filehandler = logging.handlers.TimedRotatingFileHandler(
-    os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
-)
-logger.addHandler(filehandler)
+if not DEBUG_FAST:
+    logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
+    logger = logging.getLogger()
+    filehandler = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(CERTABO_DATA_PATH, "certabo.log"), backupCount=12
+    )
+    logger.addHandler(filehandler)
 
 
 import codes
@@ -89,6 +92,9 @@ class GameClock:
         self.waiting_for_player = -99
         self.game_overtime = False
         self.initial_moves = 0
+        self.human_color = None
+        self.move_duration = 0
+        self.moves_duration = deque(maxlen=10)
         self.clock = pygame.time.Clock()
 
     def start(self):
@@ -107,6 +113,9 @@ class GameClock:
         self.waiting_for_player = -99
         self.game_overtime = False
         self.initial_moves = len(chessboard.move_stack)
+        self.human_color = play_white
+        self.move_duration = 0
+        self.moves_duration.clear()
         self.clock.tick()
 
     def update(self):
@@ -117,7 +126,7 @@ class GameClock:
         if self.game_overtime:
             return True
 
-        # Let time only start after both players do one move
+        # Let time only start after both players do x moves
         moves = len(chessboard.move_stack)
         if moves - self.initial_moves > -1:  # Set > 1 to start only after 2 moves
 
@@ -129,6 +138,14 @@ class GameClock:
                     self.time_white_left += self.time_increment_seconds
                 elif self.waiting_for_player == 0:
                     self.time_black_left += self.time_increment_seconds
+
+                # Store move duration for human player
+                if not turn == self.human_color:
+                    if self.move_duration > .01:
+                        self.moves_duration.append(self.move_duration)
+                    # print(self.moves_duration)
+                self.move_duration = 0
+
                 # Resume clock for other player
                 self.waiting_for_player = turn
                 self.clock.tick()
@@ -136,6 +153,7 @@ class GameClock:
             else:
                 self.clock.tick()
                 change = float(self.clock.get_time()) / 1000
+                self.move_duration += change
                 if turn == 1:
                     self.time_white_left -= change
                     if self.time_white_left <= 0:
@@ -169,6 +187,25 @@ class GameClock:
         if self.time_white_left <= 10:
             color = red
         button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
+
+    def sample_ai_move_duration(self):
+        if time_constraint == 'unlimited':
+            return 0
+
+        n = len(self.moves_duration)
+        mean = 3
+        std = 1.5
+
+        if n > 0:
+            mean = sum(self.moves_duration) / float(n)
+
+        if n > 1:
+            ss = sum((x - mean)**2 for x in self.moves_duration)
+            std = (ss/(n-1))**0.5
+
+        # print(self.moves_duration)
+        # print(mean, std)
+        return random.gauss(mean, std)
 
 
 def make_publisher():
@@ -658,7 +695,7 @@ current_engine_page = 0
 
 def send_leds(message='\x00' * 8): 
     
-    logging.info("Sending leds: {}".format([ord(c) for c in message]))
+    # logging.info("Sending leds: {}".format([ord(c) for c in message]))
     sock.sendto(message, SEND_SOCKET)
 
 send_leds('\xff' * 8)
@@ -1190,7 +1227,9 @@ while 1:
                     )
                     proc.start()
                     got_fast_result = False
-                    while proc.is_alive():
+                    ai_move_duration = game_clock.sample_ai_move_duration()
+                    ai_move_start_time = tt.time()
+                    while proc.is_alive() or ai_move_start_time + ai_move_duration > tt.time():
                         # event from system & keyboard
                         for event in pygame.event.get():  # all values in event list
                             if event.type == pygame.QUIT:
