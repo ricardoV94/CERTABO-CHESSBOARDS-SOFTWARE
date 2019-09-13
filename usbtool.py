@@ -1,3 +1,6 @@
+# TODO: Gracefully close port when exiting main App
+# TODO: Kill app after x time
+
 from __future__ import print_function
 import serial.tools.list_ports
 
