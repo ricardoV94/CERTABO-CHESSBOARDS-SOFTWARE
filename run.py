@@ -3,7 +3,7 @@ import sys
 import argparse
 
 DEBUG = False
-DEBUG_FAST = False
+DEBUG_FAST = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -28,12 +28,12 @@ import Queue
 
 from constants import CERTABO_SAVE_PATH, CERTABO_DATA_PATH, MAX_DEPTH_DEFAULT
 
-
 for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
     try:
         os.makedirs(d)
     except OSError:
         pass
+
 
 
 logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
@@ -47,6 +47,7 @@ logger.addHandler(filehandler)
 import codes
 from utils import port2number, port2udp, find_port, get_engine_list, get_book_list, coords_in
 from publish import Publisher
+
 
 stockfish.TO_EXE = TO_EXE
 
@@ -77,6 +78,95 @@ pgn_queue = None
 publisher = None
 
 DEFAULT_ENGINES = ("stockfish", "houdini", "komodo", "fire", "lczero")
+
+
+class GameClock:
+    def __init__(self):
+        self.time_constraint = 'unlimited'
+        self.time_total_minutes = 5
+        self.time_increment_seconds = 8
+        self.time_white_left = None
+        self.time_black_left = None
+        self.waiting_for_player = -99
+        self.game_overtime = False
+        self.initial_moves = 0
+        self.clock = pygame.time.Clock()
+
+    def set(self, chessboard):
+        if self.time_constraint == 'blitz':
+            self.time_total_minutes = 5
+            self.time_increment_seconds = 0
+        elif self.time_constraint == 'rapid':
+            self.time_total_minutes = 10
+            self.time_increment_seconds = 0
+        elif self.time_constraint == 'classical':
+            self.time_total_minutes = 15
+            self.time_increment_seconds = 15
+
+        self.time_white_left = float(self.time_total_minutes * 60)
+        self.time_black_left = float(self.time_total_minutes * 60)
+        self.waiting_for_player = -99
+        self.game_overtime = False
+        self.initial_moves = len(chessboard.move_stack)
+        self.clock.tick()
+
+    def update(self):
+
+        if self.time_constraint == 'unlimited':
+            return False
+
+        if self.game_overtime:
+            return True
+
+        # Let time only start after both players do one move
+        moves = len(chessboard.move_stack)
+        if moves - self.initial_moves > 1:
+
+            turn = chessboard.turn
+            # If player changed
+            if not self.waiting_for_player == turn:
+                # Increment timer
+                if self.waiting_for_player == 1:
+                    self.time_white_left += self.time_increment_seconds
+                elif self.waiting_for_player == 0:
+                    self.time_black_left += self.time_increment_seconds
+                # Resume clock for other player
+                self.waiting_for_player = turn
+                self.clock.tick()
+
+            else:
+                self.clock.tick()
+                change = float(self.clock.get_time()) / 1000
+                if turn == 1:
+                    self.time_white_left -= change
+                    if self.time_white_left <= 0:
+                        self.game_overtime = True
+                        self.time_white_left = 0
+                else:
+                    self.time_black_left -= change
+                    if self.time_black_left <= 0:
+                        self.game_overtime = True
+                        self.time_black_left = 0
+
+            return self.game_overtime
+
+    def display(self):
+        cols = [110]
+        rows = [5, 40]
+
+        black_minutes = int(self.time_black_left // 60)
+        black_seconds = int(self.time_black_left % 60)
+        color = grey
+        if self.time_black_left <= 10:
+            color = red
+        button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=color, text_color=white, padding=(1, 1, 1, 1))
+
+        white_minutes = int(self.time_white_left // 60)
+        white_seconds = int(self.time_white_left % 60)
+        color = lightestgrey
+        if self.time_white_left <= 10:
+            color = red
+        button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
 
 
 def make_publisher():
@@ -300,6 +390,7 @@ def show(name, x, y):
         y + int(widget_height // y_multiplier)
     )
 
+
 def txt(s, x, y, color):
     img = font.render(s, 22, color)  # string, blend, color, background color
     pos = x * x_multiplier, y * y_multiplier
@@ -321,17 +412,8 @@ def txt_large(s, x, y, color):
         y + int(text_height // y_multiplier)
     )
 
-def button(
-    text,
-    x,
-    y,
-    padding=(5, 5, 5, 5),
-    color=white,
-    text_color=grey,
-    font=font_large,
-    font_size=22,
-    align='center'
-):
+
+def button(text, x, y, padding=(5, 5, 5, 5), color=white, text_color=grey, font=font_large, font_size=22, align='center'):
     ptop, pleft, pbottom, pright = padding
     text_width, text_height = font.size(text)
     widget_width = pleft * x_multiplier + text_width + pright * x_multiplier
@@ -530,12 +612,10 @@ do_ai_move = True
 do_user_move = False
 conversion_dialog = False
 human_game = False
-time_constraint = 'unlimited'
-time_total_minutes = 5
-time_increment_seconds = 8
 use_board_position = False
 renew = True
 left_click = False
+game_clock = GameClock()
 
 engine = "stockfish"
 book = ""
@@ -544,7 +624,6 @@ saved_files = []
 resume_file_selected = 0
 resume_file_start = 0  # starting filename to show
 resuming_new_game = False
-
 
 sock = socket(AF_INET, SOCK_DGRAM)
 sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -591,11 +670,7 @@ send_leds()
 
 poweroff_time = datetime.now()
 
-time_white_left = -99
-time_black_left = -99
-waiting_for_player = -99
-clock = pygame.time.Clock()
-game_overtime = False
+
 while 1:
     t = datetime.now()  # current time
 
@@ -1029,64 +1104,8 @@ while 1:
                 else:
                     logging.info("found unknown piece, filter processing")
 
-        def run_game_clock():
-            # Make this a class
-            global chessboard
-            global time_constraint
-            global waiting_for_player
-            global time_white_left
-            global time_black_left
-            global clock
-
-            if time_constraint == 'unlimited':
-                return
-
-            # Let time only start after both players do first move (what to do about saved games?)
-            if len(chessboard.move_stack) > 1:
-
-                turn = chessboard.turn
-                if waiting_for_player == turn:
-                    clock.tick()
-                    change = float(clock.get_time()) / 1000
-                    if turn == 1:
-                        time_white_left -= change
-                        if time_white_left <= 0:
-                            pass
-                            # Add time over condition
-                    else:
-                        time_black_left -= change
-                        if time_black_left <= 0:
-                            pass
-                            # Add time over condition here
-
-                else:
-                    if not waiting_for_player == -99:
-                        if waiting_for_player == 1:
-                            time_white_left += time_increment_seconds
-                        else:
-                            time_black_left += time_increment_seconds
-                    waiting_for_player = turn
-                    clock.tick()
-
-            # Display time
-            cols = [110]
-            rows = [5, 40]
-
-            black_minutes = int(time_black_left // 60)
-            black_seconds = int(time_black_left % 60)
-            color = grey
-            if time_black_left <= 10:
-                color = red
-            button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=color, text_color=white, padding=(1,1,1,1))
-
-            white_minutes = int(time_white_left // 60)
-            white_seconds = int(time_white_left % 60)
-            color = lightestgrey
-            if time_white_left <= 10:
-                color = red
-            button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
-
-        run_game_clock()
+        game_overtime = game_clock.update()
+        game_clock.display()
         show("terminal", 179, 3)
 
         txt(terminal_lines[0], 183, 3, terminal_text_color)
@@ -1146,7 +1165,7 @@ while 1:
         else:  # usual game process
 
             # AI MOVE
-            if not human_game and do_ai_move and not chessboard.is_game_over():
+            if not human_game and do_ai_move and not chessboard.is_game_over() and not game_overtime:
                 do_ai_move = False
                 got_polyglot_result = False
                 if not book:
@@ -1201,7 +1220,9 @@ while 1:
                                 78 * y_multiplier,
                             ),
                         )
-                        run_game_clock()
+                        game_overtime = game_clock.update()
+                        game_clock.display()
+
                         txt_large("Analysing...", 227 + 55, 77 + 8, grey)
                         show("force-move", 247, 77 + 39)
                         pygame.display.flip()  # copy to screen
@@ -1212,7 +1233,7 @@ while 1:
 
                         mbutton = pygame.mouse.get_pressed()
 
-                        if mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149:  # pressed Force move button
+                        if (mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149) or game_overtime:  # pressed Force move button
                             logging.info("------------------------------------")
                             proc.stop()
                             proc.join()
@@ -1265,7 +1286,6 @@ while 1:
                 logging.info("\n\n%s", chessboard.fen())
 
                 if chessboard.is_check():
-                    # print " *************** check ! ******************"
                     terminal_print(" check!", False)
 
                 if chessboard.is_checkmate():
@@ -1275,7 +1295,7 @@ while 1:
                     logging.info("stalemate!")
 
             # user move
-            if do_user_move and not chessboard.is_game_over():
+            if do_user_move and not chessboard.is_game_over() and not game_overtime:
                 do_user_move = False
                 try:
                     for m in move:
@@ -1322,7 +1342,7 @@ while 1:
                 # pygame.draw.rect(scr, black, (x0+2, y0+2, 167, 28) )
                 # txt("Please move your piece",x0+14,y0+4,white)
 
-            if chessboard.is_game_over():
+            if chessboard.is_game_over() or game_overtime:
                 if chessboard.is_checkmate():
                     gameover_banner = "check-mate-banner"
                 elif chessboard.is_stalemate():
@@ -1333,6 +1353,8 @@ while 1:
                     gameover_banner = "seventy-five-moves-banner"
                 elif chessboard.is_insufficient_material():
                     gameover_banner = "insufficient-material-banner"
+                elif game_overtime:
+                    gameover_banner = "stale-mate-banner"
                 show(gameover_banner, 227, 97)
 
             if conversion_dialog:
@@ -1494,6 +1516,10 @@ while 1:
     # ---------------- new game dialog ----------------
     elif window == "new game":
         if dialog == "select time":
+
+            time_total_minutes = game_clock.time_total_minutes
+            time_increment_seconds = game_clock.time_increment_seconds
+
             cols = [150, 195]
             rows = [15, 70, 105, 160, 200]
 
@@ -1533,8 +1559,8 @@ while 1:
                 elif coords_in(x, y, seconds_more2_button_area):
                     time_increment_seconds += 10
 
-                time_total_minutes = max(time_total_minutes, 1)
-                time_increment_seconds = max(time_increment_seconds, 0)
+                game_clock.time_total_minutes = max(time_total_minutes, 1)
+                game_clock.time_increment_seconds = max(time_increment_seconds, 0)
 
                 if coords_in(x, y, done_button_area):
                     dialog = ""
@@ -1665,6 +1691,7 @@ while 1:
 
             txt_x, _ = txt_large("Time:", cols[1], rows[2] + 5, grey)
 
+            time_constraint = game_clock.time_constraint
             time_unlimited_button_area = button(
                 u"\u221E",
                 txt_x + 5,
@@ -1802,10 +1829,10 @@ while 1:
                 for time_button, time_string in zip((time_unlimited_button_area, time_blitz_button_area, time_rapid_button_area, time_classical_button_area),
                                                     ('unlimited', 'blitz', 'rapid', 'classical')):
                     if coords_in(x, y, time_button):
-                        time_constraint = time_string
+                        game_clock.time_constraint = time_string
                 if coords_in(x, y, time_custom_button_area):
                     dialog = "select time"
-                    time_constraint = 'custom'
+                    game_clock.time_constraint = 'custom'
                 if coords_in(x, y, chess960_button_area):
                     chess960 = not chess960
                 if syzygy_available and coords_in(x, y, syzygy_button_area):
@@ -1861,21 +1888,7 @@ while 1:
                     game_process_just_started = True
                     banner_place_pieces = True
 
-                    # Time variables
-                    if time_constraint == 'blitz':
-                        time_total_minutes = 5
-                        time_increment_seconds = 0
-                    elif time_constraint == 'rapid':
-                        time_total_minutes = 10
-                        time_increment_seconds = 0
-                    elif time_constraint == 'classical':
-                        time_total_minutes = 15
-                        time_increment_seconds = 15
-                    time_white_left = float(time_total_minutes * 60)
-                    time_black_left = float(time_total_minutes * 60)
-                    waiting_for_player = -99
-                    game_overtime = False
-                    clock.tick()
+                    game_clock.set(chessboard)
 
                     if args.publish:
                         make_publisher()
