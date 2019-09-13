@@ -247,8 +247,8 @@ class Engine(subprocess.Popen):
         self.put("setoption name %s value %s" % (optionname, str(value)))
         stdout = self.isready()
         # Not working because self.isready() will only return readyok
-        # if stdout.find("No such") >= 0:
-        #     print("stockfish was unable to set option %s" % optionname)
+        if stdout.find("No such") >= 0:
+            print("stockfish was unable to set option %s" % optionname)
 
     def setposition(self, moves=(), starting_position=None):
         """
