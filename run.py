@@ -3,7 +3,7 @@ import sys
 import argparse
 
 DEBUG = False
-DEBUG_FAST = True
+DEBUG_FAST = False
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -33,7 +33,6 @@ for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
         os.makedirs(d)
     except OSError:
         pass
-
 
 
 logging.basicConfig(level="DEBUG", format="%(asctime)s:%(module)s:%(message)s")
@@ -92,7 +91,7 @@ class GameClock:
         self.initial_moves = 0
         self.clock = pygame.time.Clock()
 
-    def set(self, chessboard):
+    def start(self):
         if self.time_constraint == 'blitz':
             self.time_total_minutes = 5
             self.time_increment_seconds = 0
@@ -151,6 +150,9 @@ class GameClock:
             return self.game_overtime
 
     def display(self):
+        if self.time_constraint == 'unlimited':
+            return
+
         cols = [110]
         rows = [5, 40]
 
@@ -1888,7 +1890,7 @@ while 1:
                     game_process_just_started = True
                     banner_place_pieces = True
 
-                    game_clock.set(chessboard)
+                    game_clock.start()
 
                     if args.publish:
                         make_publisher()
