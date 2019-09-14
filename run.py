@@ -91,6 +91,7 @@ class GameClock:
         self.time_black_left = None
         self.waiting_for_player = -99
         self.game_overtime = False
+        self.game_overtime_winner = -99
         self.initial_moves = 0
         self.human_color = None
         self.move_duration = 0
@@ -112,6 +113,7 @@ class GameClock:
         self.time_black_left = float(self.time_total_minutes * 60)
         self.waiting_for_player = -99
         self.game_overtime = False
+        self.game_overtime_winner = -99
         self.initial_moves = len(chessboard.move_stack)
         self.human_color = play_white
         self.move_duration = 0
@@ -158,11 +160,13 @@ class GameClock:
                     self.time_white_left -= change
                     if self.time_white_left <= 0:
                         self.game_overtime = True
+                        self.game_overtime_winner = 0
                         self.time_white_left = 0
                 else:
                     self.time_black_left -= change
                     if self.time_black_left <= 0:
                         self.game_overtime = True
+                        self.game_overtime_winner = 1
                         self.time_black_left = 0
 
             return self.game_overtime
@@ -189,6 +193,7 @@ class GameClock:
         button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
 
     def sample_ai_move_duration(self):
+
         if time_constraint == 'unlimited':
             return 0
 
@@ -710,7 +715,7 @@ send_leds()
 poweroff_time = datetime.now()
 
 
-while 1:
+while True:
     t = datetime.now()  # current time
 
     # event from system & keyboard
@@ -1383,7 +1388,12 @@ while 1:
                 # pygame.draw.rect(scr, black, (x0+2, y0+2, 167, 28) )
                 # txt("Please move your piece",x0+14,y0+4,white)
 
-            if chessboard.is_game_over() or game_overtime:
+            if game_overtime:
+                if game_clock.game_overtime_winner == 1:
+                    button('White wins', 270, 97, color=grey, text_color=white)
+                else:
+                    button('Black wins', 270, 97, color=grey, text_color=white)
+            elif chessboard.is_game_over():
                 if chessboard.is_checkmate():
                     gameover_banner = "check-mate-banner"
                 elif chessboard.is_stalemate():
@@ -1394,8 +1404,6 @@ while 1:
                     gameover_banner = "seventy-five-moves-banner"
                 elif chessboard.is_insufficient_material():
                     gameover_banner = "insufficient-material-banner"
-                elif game_overtime:
-                    gameover_banner = "stale-mate-banner"
                 show(gameover_banner, 227, 97)
 
             if conversion_dialog:
