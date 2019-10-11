@@ -30,6 +30,8 @@ import random
 
 from constants import CERTABO_SAVE_PATH, CERTABO_DATA_PATH, MAX_DEPTH_DEFAULT
 
+from messchess import RomEngineThread
+
 for d in (CERTABO_SAVE_PATH, CERTABO_DATA_PATH):
     try:
         os.makedirs(d)
@@ -662,6 +664,7 @@ left_click = False
 game_clock = GameClock()
 
 engine = "stockfish"
+rom = False
 book = ""
 
 saved_files = []
@@ -1157,8 +1160,9 @@ while True:
         txt_large(hint_text, 96, 185 + 22, grey)
 
         # buttons
-        show("take_back", 5, 140 + 22)
-        if not human_game:
+        if not rom:
+            show("take_back", 5, 140 + 22)
+        if not human_game and not rom:
             show("hint", 5, 140 + 40 + 22)
         show("save", 5, 140 + 100)
         show("exit", 5, 140 + 140)
@@ -1200,6 +1204,8 @@ while True:
                         hint_text = ""
                         previous_board_click = ""  # example: "e2"
                         board_click = ""  # example: "e2"
+                        if rom:
+                            rom_engine.kill()
                     else:  # save button
                         dialog = ""
                         window = "save"
@@ -1221,27 +1227,40 @@ while True:
 
                 if got_polyglot_result:
                     ai_move = best_move.lower()
-                else:    
-                    proc = stockfish.EngineThread(
-                        [_move.uci() for _move in chessboard.move_stack],
-                        difficulty + 1,
-                        engine=engine,
-                        starting_position=starting_position,
-                        chess960=chess960,
-                        syzygy_path=args.syzygy if enable_syzygy else None,
-                    )
-                    proc.start()
+                else:
+                    move_list = [_move.uci() for _move in chessboard.move_stack]
+                    if not rom:
+                        proc = stockfish.EngineThread(
+                            move_list,
+                            difficulty + 1,
+                            engine=engine,
+                            starting_position=starting_position,
+                            chess960=chess960,
+                            syzygy_path=args.syzygy if enable_syzygy else None,
+                        )
+                        proc.start()
+                    else:
+                        rom_engine.go(move_list)
+
                     got_fast_result = False
+                    waiting_ai_move = True
                     ai_move_duration = game_clock.sample_ai_move_duration()
                     ai_move_start_time = tt.time()
-                    while proc.is_alive() or ai_move_start_time + ai_move_duration > tt.time():
-                        # event from system & keyboard
+                    while waiting_ai_move or ai_move_start_time + ai_move_duration > tt.time():
+                        if not rom:
+                            waiting_ai_move = proc.is_alive()
+                        else:
+                            waiting_ai_move = rom_engine.waiting_ai_move()
+
+                        # Event from system & keyboard
                         for event in pygame.event.get():  # all values in event list
                             if event.type == pygame.QUIT:
                                 if args.publish:
                                     publisher.stop()
                                 pygame.display.quit()
                                 pygame.quit()
+                                # if rom:
+                                #     rom_engine.kill()
                                 sys.exit()
 
                         # Display board
@@ -1270,7 +1289,8 @@ while True:
                         game_clock.display()
 
                         txt_large("Analysing...", 227 + 55, 77 + 8, grey)
-                        show("force-move", 247, 77 + 39)
+                        if not rom:
+                            show("force-move", 247, 77 + 39)
                         pygame.display.flip()  # copy to screen
 
                         x, y = pygame.mouse.get_pos()  # mouse position
@@ -1279,66 +1299,71 @@ while True:
 
                         mbutton = pygame.mouse.get_pressed()
 
-                        if (mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149) or game_overtime:  # pressed Force move button
+                        if (not rom and (mbutton[0] == 1 and 249 < x < 404 and 120 < y < 149)) or game_overtime:  # pressed Force move button
                             logging.info("------------------------------------")
-                            proc.stop()
-                            proc.join()
-                            ai_move = proc.best_move
-                            got_fast_result = True
+                            if not rom:
+                                proc.stop()
+                                proc.join()
+                                ai_move = proc.best_move
+                                got_fast_result = True
                             break
 
                         # tt.sleep(0.5)
 
                     if not got_fast_result:
-                        ai_move = proc.best_move.lower()
+                        if not rom:
+                            ai_move = proc.best_move.lower()
+                        else:
+                            ai_move = rom_engine.best_move
 
-                play_sound('move')
-                logging.info("AI move: %s", ai_move)
+                if not game_overtime:
+                    play_sound('move')
+                    logging.info("AI move: %s", ai_move)
 
-                # highlight right LED
-                i, value, i_source, value_source = codes.move2led(
-                    ai_move, rotate180
-                )  # error here if checkmate before
-                message = ""
-                for j in range(8):
-                    if j != i and j != i_source:
-                        message += chr(0)
-                    elif j == i and j == i_source:
-                        message += chr(value + value_source)
-                    elif j == i:
-                        message += chr(value)
-                    else:
-                        message += chr(value_source)        
-                        
-                send_leds(message)
+                    # highlight right LED
+                    i, value, i_source, value_source = codes.move2led(
+                        ai_move, rotate180
+                    )  # error here if checkmate before
+                    message = ""
+                    for j in range(8):
+                        if j != i and j != i_source:
+                            message += chr(0)
+                        elif j == i and j == i_source:
+                            message += chr(value + value_source)
+                        elif j == i:
+                            message += chr(value)
+                        else:
+                            message += chr(value_source)
 
-                # banner_do_move = True
-                if not args.robust:
-                    show_board_and_animated_move(chessboard.fen(), ai_move, 178, 40)
+                    send_leds(message)
 
-                try:
-                    chessboard.push_uci(ai_move)
-                    logging.info("   AI move: %s", ai_move)
-                    logging.info("after AI move: %s", chessboard.fen())
-                    side = ("white", "black")[int(chessboard.turn)]
-                    terminal_print("{} move: {}".format(side, ai_move))
-                    if args.publish:
-                        publish()
-                except:
-                    logging.info("   ----invalid chess_engine move! ---- %s", ai_move)
-                    logging.exception("Exception: ")
-                    terminal_print(ai_move + " - invalid move !")
+                    # banner_do_move = True
+                    if not args.robust:
+                        show_board_and_animated_move(chessboard.fen(), ai_move, 178, 40)
 
-                logging.info("\n\n%s", chessboard.fen())
+                    try:
+                        chessboard.push_uci(ai_move)
+                        logging.info("   AI move: %s", ai_move)
+                        logging.info("after AI move: %s", chessboard.fen())
+                        side = ("white", "black")[int(chessboard.turn)]
+                        terminal_print("{} move: {}".format(side, ai_move))
+                        if args.publish:
+                            publish()
+                    except:
+                        logging.info("   ----invalid chess_engine move! ---- %s", ai_move)
+                        logging.exception("Exception: ")
+                        terminal_print(ai_move + " - invalid move !")
 
-                if chessboard.is_check():
-                    terminal_print(" check!", False)
+                    logging.info("\n\n%s", chessboard.fen())
 
-                if chessboard.is_checkmate():
-                    logging.info("mate!")
+                    if chessboard.is_check():
+                        terminal_print(" check!", False)
 
-                if chessboard.is_stalemate():
-                    logging.info("stalemate!")
+                    if chessboard.is_checkmate():
+                        logging.info("mate!")
+
+                    if chessboard.is_stalemate():
+                        logging.info("stalemate!")
 
             # user move
             if do_user_move and not chessboard.is_game_over() and not game_overtime:
@@ -1444,7 +1469,7 @@ while True:
 
                     if 6 < x < 127 and (143 + 22) < y < (174 + 22):  # Take back button
                         if (human_game and len(chessboard.move_stack) >= 1) or (
-                            not human_game and len(chessboard.move_stack) >= 2
+                            not human_game and not rom and len(chessboard.move_stack) >= 2
                         ):
                             logging.info("--------- before take back: ")
                             logging.info("Board state: %s", chessboard.fen())
@@ -1490,7 +1515,7 @@ while True:
                         
                         if got_polyglot_result:
                             hint_text = best_move
-                        else:
+                        elif not rom:
                             proc = stockfish.EngineThread(
                                 [_move.uci() for _move in chessboard.move_stack],
                                 difficulty + 1,
@@ -1931,6 +1956,9 @@ while True:
                     board_click = ""
                     do_user_move = False
                     do_ai_move = False
+                    rom = engine.startswith('rom')
+                    if rom:
+                        rom_engine = RomEngineThread(depth=difficulty + 1, rom=engine.replace('rom-', ''))
 
                     conversion_dialog = False
                     waiting_for_user_move = False
