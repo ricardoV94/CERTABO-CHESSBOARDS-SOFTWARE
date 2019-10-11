@@ -1,23 +1,13 @@
 import os
-import subprocess
-import chess
-import chess.engine
 
 import Queue
 import logging
 import re
 import subprocess
 import threading
-import time
+
 from random import randint
 
-# wd = os.path.join(os.getcwd(), 'engines', 'MessChess')
-# print(os.path.exists(wd))
-# print(os.listdir(wd))
-# # os.chdir(wd)
-# subprocess.Popen(['MessChess.exe', 'lyon16'], cwd=wd, shell=True)
-
-# print(os.getcwd())
 
 class AsyncLineReader(threading.Thread):
     def __init__(self, fd, outputQueue):
@@ -46,89 +36,6 @@ class AsyncLineReader(threading.Thread):
             reader.start()
 
         return reader, queue
-
-
-class Match:
-    """
-    The Match class setups a chess match between two specified engines.  The white player
-    is randomly chosen.
-
-    deep_engine = Engine(depth=20)
-    shallow_engine = Engine(depth=10)
-    engines = {
-        'shallow': shallow_engine,
-        'deep': deep_engine,
-        }
-
-    m = Match(engines=engines)
-
-    m.move() advances the game by one move.
-
-    m.run() plays the game until completion or 200 moves have been played,
-    returning the winning engine name.
-    """
-
-    def __init__(self, engines):
-        random_bin = randint(0, 1)
-        self.white = list(engines.keys())[random_bin]
-        self.black = list(engines.keys())[not random_bin]
-        self.white_engine = engines.get(self.white)
-        self.black_engine = engines.get(self.black)
-        self.moves = []
-        self.white_engine.newgame()
-        self.black_engine.newgame()
-        self.winner = None
-        self.winner_name = None
-
-    def move(self):
-        """
-        Advance game by single move, if possible.
-
-        @return: logical indicator if move was performed.
-        """
-        if len(self.moves) == MAX_MOVES:
-            return False
-        elif len(self.moves) % 2:
-            active_engine = self.black_engine
-            active_engine_name = self.black
-            inactive_engine = self.white_engine
-            inactive_engine_name = self.white
-        else:
-            active_engine = self.white_engine
-            active_engine_name = self.white
-            inactive_engine = self.black_engine
-            inactive_engine_name = self.black
-        active_engine.setposition(self.moves)
-        movedict = active_engine.bestmove()
-        bestmove = movedict.get("move")
-        info = movedict.get("info")
-        ponder = movedict.get("ponder")
-        self.moves.append(bestmove)
-
-        if info["score"]["eval"] == "mate":
-            matenum = info["score"]["value"]
-            if matenum > 0:
-                self.winner_engine = active_engine
-                self.winner = active_engine_name
-            elif matenum < 0:
-                self.winner_engine = inactive_engine
-                self.winner = inactive_engine_name
-            return False
-
-        if ponder != "(none)":
-            return True
-
-    def run(self):
-        """
-        Returns the winning chess engine or "None" if there is a draw.
-        """
-        while self.move():
-            pass
-        return self.winner
-
-
-class MaxDepthReached(Exception):
-    pass
 
 
 class Engine(subprocess.Popen):
@@ -169,23 +76,20 @@ class Engine(subprocess.Popen):
         rand=False,
         rand_min=-10,
         rand_max=10,
-        binary=None,
+        rom='lyon16',
         chess960=False,
     ):
-        if binary:
-            binary_path = binary
-        else:
-            binary_path = "stockfish"
-            binary_path = ['MessChess.exe', 'lyon16']
+        dir_ = os.getcwd()
+        os.chdir(os.path.join(os.getcwd(), 'engines', 'MessChess'))
+        binary_path = ['MessChess.exe', rom]
         subprocess.Popen.__init__(
             self,
             binary_path,
             universal_newlines=True,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            cwd=os.path.join(os.getcwd(), 'engines', 'MessChess'),
-            shell=True
         )
+        os.chdir(dir_)
         self.output_queue = Queue.Queue()
         self.output_reader = AsyncLineReader(self.stdout, self.output_queue)
         self.output_reader.start()
@@ -317,7 +221,7 @@ class Engine(subprocess.Popen):
             text = self.output_queue.get().strip()
             split_text = text.split(" ")
             logging.info("Got engine line: %s", text)
-            print(text)
+            # print(text)
             if split_text[0] == "info":
                 last_info = Engine._bestmove_get_info(text)
                 if "pv" not in last_info:
@@ -415,26 +319,69 @@ class Engine(subprocess.Popen):
                 return text
 
 
-def next_move(b):
-    moves = [str(move) for move in b.move_stack]
-    engine.setposition(moves)
-    move = engine.bestmove()
-    return move
+class RomEngine:
+    def __init__(self, get_queue, send_queue, depth=2, rom='lyon16'):
+        self.engine = Engine(depth=depth, rom=rom)
+        self.engine.newgame()
+        self.get_queue = get_queue
+        self.send_queue = send_queue
+        self.start()
+
+    def start(self):
+        while True:
+            try:
+                cmd, arg = self.get_queue.get_nowait()
+            except Queue.Empty:
+                continue
+            if cmd == 'kill':
+                print('Killing Engine')
+                self.engine.kill()
+                return
+            elif cmd == 'move':
+                # print('move:', arg)
+                self.go(arg)
+            else:
+                print('Command not recognized')
+
+    def go(self, move_list):
+        self.engine.setposition(move_list)
+        move = self.engine.bestmove()
+        # print('got move', move)
+        self.send_queue.put(move['move'])
+        return
+
+    def kill(self):
+        self.engine.kill()
 
 
-def play_game():
-    engine.newgame()
-    print(engine.isready())
-    b = chess.Board()
-    while True:
-        move = raw_input('Move:')
-        b.push_uci(move)
+class RomEngineThread:
+    def __init__(self, depth=2, rom='lyon16'):
+        self.get_queue = Queue.Queue()
+        self.send_queue = Queue.Queue()
+        t = threading.Thread(target=RomEngine, args=(self.send_queue, self.get_queue, depth, rom))
+        t.daemon = True
+        t.start()
+        self.best_move = None
 
-        move = next_move(b)
-        b.push_uci(move['move'])
-        print(b)
+    def send(self, cmd):
+        self.send_queue.put(cmd)
 
+    def kill(self):
+        self.send(('kill', None))
 
-if __name__ ==  '__main__':
-    engine = Engine()
-    engine.go()
+    def go(self, move_list=[]):
+        self.send_queue.put(('move', move_list))
+        self.best_move = None
+
+    def waiting_ai_move(self):
+        if self.best_move:
+            return False
+
+        try:
+            move = self.get_queue.get_nowait()
+        except Queue.Empty:
+            return True
+        else:
+            self.best_move = move
+            return False
+
