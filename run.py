@@ -86,6 +86,7 @@ DEFAULT_ENGINES = ("stockfish", "houdini", "komodo", "fire", "lczero")
 
 class GameClock:
     def __init__(self):
+        self.time_warning_threshold = 60
         self.time_constraint = 'unlimited'
         self.time_total_minutes = 5
         self.time_increment_seconds = 8
@@ -173,6 +174,14 @@ class GameClock:
 
             return self.game_overtime
 
+    def time_warning(self):
+        if self.time_constraint == 'unlimited':
+            return False
+
+        if chessboard.turn:
+            return self.time_white_left < self.time_warning_threshold
+        return self.time_black_left < self.time_warning_threshold
+
     def display(self):
         if self.time_constraint == 'unlimited':
             return
@@ -183,19 +192,18 @@ class GameClock:
         black_minutes = int(self.time_black_left // 60)
         black_seconds = int(self.time_black_left % 60)
         color = grey
-        if self.time_black_left <= 10:
+        if self.time_black_left < self.time_warning_threshold:
             color = red
         button('{:02d}:{:02d}'.format(black_minutes, black_seconds), cols[0], rows[0], color=color, text_color=white, padding=(1, 1, 1, 1))
 
         white_minutes = int(self.time_white_left // 60)
         white_seconds = int(self.time_white_left % 60)
         color = lightestgrey
-        if self.time_white_left <= 10:
+        if self.time_white_left < self.time_warning_threshold:
             color = red
         button('{:02d}:{:02d}'.format(white_minutes, white_seconds), cols[0], rows[1], color=color, text_color=black, padding=(1, 1, 1, 1))
 
     def sample_ai_move_duration(self):
-
         if time_constraint == 'unlimited':
             return 0
 
@@ -700,20 +708,25 @@ waiting_for_user_move = False
 new_setup = False
 current_engine_page = 0
 
+class LedManager:
+    def __init__(self):
+        self.last_message = None
 
-def send_leds(message='\x00' * 8): 
-    
-    # logging.info("Sending leds: {}".format([ord(c) for c in message]))
-    sock.sendto(message, SEND_SOCKET)
+    def send_leds(self, message='\x00' * 8):
+        if message == self.last_message:
+            return
+        self.last_message = message
+        sock.sendto(message, SEND_SOCKET)
 
-send_leds('\xff' * 8)
+led_manager = LedManager()
+led_manager.send_leds('\xff' * 8)
 
 scr.fill(white)  # clear screen
 show("start-up-logo", 7, 0)
 pygame.display.flip()  # copy to screen
 if not DEBUG_FAST:
     tt.sleep(2)
-send_leds()
+led_manager.send_leds()
 
 poweroff_time = datetime.now()
 
@@ -840,7 +853,7 @@ while True:
 
             if 6 < x < 123 and 150 < y < 190:  # new game pressed
                 window = "new game"
-                send_leds()
+                led_manager.send_leds()
 
             if 6 < x < 163 and 191 < y < 222:  # resume pressed
                 window = "resume"
@@ -1112,7 +1125,21 @@ while True:
                                     move = codes.get_moves(chessboard, board_state_usb)
                                 except codes.InvalidMove:
                                     if move_detect_tries > move_detect_max_tries:
+                                        # Find missplaced pieces
+                                        try:
+                                            physical_board = chess.Board()
+                                            physical_board.set_board_fen(s2)
+                                        except ValueError:
+                                            logging.error('Corrupt FEN from physical board')
+                                            pass
+                                        else:  # No Exception
+                                            diffs = []
+                                            for square in range(64):
+                                                if chessboard.piece_at(square) != physical_board.piece_at(square):
+                                                    diffs.append(chess.SQUARE_NAMES[square])
+                                            led_manager.send_leds(codes.squares2led(diffs, rotate180))
                                         terminal_print("Invalid move")
+
                                 else:
                                     move_detect_tries = 0
                                     if move:
@@ -1130,7 +1157,19 @@ while True:
                         else:
                             if DEBUG:
                                 logging.info("All pieces on right places")
-                            send_leds()
+                            # TODO: Avoid expensive recalculations (time_gap)
+                            # is_check leds
+                            if chessboard.is_check():
+                                # Find king on check
+                                checked_king_square = chess.SQUARE_NAMES[chessboard.king(chessboard.turn)]
+                                led_manager.send_leds(codes.squares2led([checked_king_square], rotate180))
+                            # time warning leds
+                            elif game_clock.time_warning():
+                                led_manager.send_leds(codes.squares2led(['a1', 'a8', 'h1', 'h8']))
+                            # no leds
+                            else:
+                                led_manager.send_leds()
+
                             banner_right_places = False
                             banner_place_pieces = False
                             # start with black, do move just right after right initial board placement
@@ -1308,6 +1347,9 @@ while True:
                                 got_fast_result = True
                             break
 
+                        # AI thinking leds
+                        led_manager.send_leds(codes.squares2led(['d4', 'e4', 'd5', 'e5']))
+
                         # tt.sleep(0.5)
 
                     if not got_fast_result:
@@ -1320,22 +1362,21 @@ while True:
                     play_sound('move')
                     logging.info("AI move: %s", ai_move)
 
-                    # highlight right LED
-                    i, value, i_source, value_source = codes.move2led(
-                        ai_move, rotate180
-                    )  # error here if checkmate before
-                    message = ""
-                    for j in range(8):
-                        if j != i and j != i_source:
-                            message += chr(0)
-                        elif j == i and j == i_source:
-                            message += chr(value + value_source)
-                        elif j == i:
-                            message += chr(value)
-                        else:
-                            message += chr(value_source)
-
-                    send_leds(message)
+                    led_manager.send_leds(codes.move2led(ai_move, rotate180))
+                    # # highlight right LED
+                    # i, value, i_source, value_source = codes.move2led(ai_move, rotate180)  # error here if checkmate before
+                    # message = ""
+                    # for j in range(8):
+                    #     if j != i and j != i_source:
+                    #         message += chr(0)
+                    #     elif j == i and j == i_source:
+                    #         message += chr(value + value_source)
+                    #     elif j == i:
+                    #         message += chr(value)
+                    #     else:
+                    #         message += chr(value_source)
+                    #
+                    # led_manager.send_leds(message)
 
                     # banner_do_move = True
                     if not args.robust:
@@ -1356,8 +1397,9 @@ while True:
 
                     logging.info("\n\n%s", chessboard.fen())
 
-                    if chessboard.is_check():
+                    if chessboard.is_check(): # AI CHECK
                         terminal_print(" check!", False)
+
 
                     if chessboard.is_checkmate():
                         logging.info("mate!")
@@ -1365,7 +1407,7 @@ while True:
                     if chessboard.is_stalemate():
                         logging.info("stalemate!")
 
-            # user move
+            # USER MOVE
             if do_user_move and not chessboard.is_game_over() and not game_overtime:
                 do_user_move = False
                 try:
@@ -1413,6 +1455,7 @@ while True:
                 # pygame.draw.rect(scr, black, (x0+2, y0+2, 167, 28) )
                 # txt("Please move your piece",x0+14,y0+4,white)
 
+            # Endgame banners
             if game_overtime:
                 if game_clock.game_overtime_winner == 1:
                     button('White wins', 270, 97, color=grey, text_color=white)
@@ -1461,13 +1504,12 @@ while True:
                             conversion_dialog = False
                             do_user_move = True
                 else:
-
-                    if 6 < x < 123 and (140 + 140) < y < (
-                        140 + 140 + 40
-                    ):  # Exit button
+                    # Exit button
+                    if 6 < x < 123 and (140 + 140) < y < (140 + 140 + 40):
                         dialog = "exit"  # start dialog inside Game page
 
-                    if 6 < x < 127 and (143 + 22) < y < (174 + 22):  # Take back button
+                    # Take back button
+                    if 6 < x < 127 and (143 + 22) < y < (174 + 22):
                         if (human_game and len(chessboard.move_stack) >= 1) or (
                             not human_game and not rom and len(chessboard.move_stack) >= 2
                         ):
@@ -1504,7 +1546,8 @@ while True:
                                 len(chessboard.move_stack),
                             )
 
-                    if 6 < x < 89 and (183 + 22) < y < (216 + 22):  # Hint button
+                    # Hist button
+                    if 6 < x < 89 and (183 + 22) < y < (216 + 22):
                         got_polyglot_result = False
                         if not book:
                             got_polyglot_result = False
@@ -1582,7 +1625,8 @@ while True:
                             if not got_fast_result:
                                 hint_text = proc.best_move
 
-                    if 6 < x < 78 and 244 < y < 272:  # Save button
+                    # Save button
+                    if 6 < x < 78 and 244 < y < 272:
                         window = "save"
                         previous_board_click = ""
                         board_click = ""
