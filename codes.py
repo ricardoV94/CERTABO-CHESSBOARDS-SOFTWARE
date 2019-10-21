@@ -357,18 +357,49 @@ def reverse_bits(n):
     return int('{:064b}'.format(n)[::-1], 2)
 
 
-def move2led(move, rotate180=False):
+def _square2certabo(square, rotate180=False):
+    '''
+    Converts a chess position code (e.g., e2e4) to the respective Certabo led code (e.g., led[6] = 16)
+    '''
     if rotate180:
-        i = reversed_letter.index(move[2])
-        j = 9 - int(move[3])
-        k = reversed_letter.index(move[0])
-        l = 9 - int(move[1])
+        col = reversed_letter.index(square[0])
+        row = 9 - int(square[1])
+        # i = reversed_letter.index(move[2])
+        # j = 9 - int(move[3])
+        # k = reversed_letter.index(move[0])
+        # l = 9 - int(move[1])
     else:
-        i = letter.index(move[2])
-        j = int(move[3])
-        k = letter.index(move[0])
-        l = int(move[1])
-    return 8 - j, 2 ** i, 8 - l, 2 ** k
+        col = letter.index(square[0])
+        row = int(square[1])
+        # i = letter.index(move[2])
+        # j = int(move[3])
+        # k = letter.index(move[0])
+        # l = int(move[1])
+
+    return 8 - row, 2 ** col
+    # return 8 - j, 2 ** i, 8 - l, 2 ** k
+
+
+def squares2led(squares, rotate180=False):
+    '''
+    Converts list of squares to Certabo binary led encoding
+    e.g., ['e2', 'e4'] = [0, 0, 0, 0, 16, 0, 16, 0] -> '\x00\x00\x00\x00\x10\x00\x10\x00'
+    '''
+    led_positions = (_square2certabo(square, rotate180) for square in set(squares))
+
+    leds = [0]*8
+    for row, col in led_positions:
+        leds[row] += col
+
+    return ''.join(chr(led) for led in leds)
+
+
+def move2led(move, rotate180=False):
+    '''
+    Helper function to convert chess move to Certabo led encoding
+    move2led('e2e4') -> squares2led(['e2', 'e4])
+    '''
+    return squares2led([move[:2], move[2:4]], rotate180)
 
 
 def usb_data_to_FEN(usb_data, rotate180=False):
