@@ -81,7 +81,8 @@ while True:
         try:
             serial_port.write(data)
             if DEBUG:
-                print("sending to usb data with length =", len(data))
+                # print("sending to usb data with length =", len(data))
+                print('sending:', [ord(d) for d in data])
         except Exception as e:
             print('Could not write to Serial port:', str(e))
             serial_ok = False
@@ -99,8 +100,8 @@ while True:
                 message = message[1: -2]
                 serial_port.flushInput()
 
-                if DEBUG:
-                    print(len(message.split(" ")), "numbers")
+                # if DEBUG:
+                #     print(len(message.split(" ")), "numbers")
 
                 if len(message.split(" ")) == 320:  # 64*5
                     sock.sendto(message, SEND_SOCKET)
