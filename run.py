@@ -3,7 +3,7 @@ import sys
 import argparse
 
 DEBUG = False
-DEBUG_FAST = False
+DEBUG_FAST = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -221,6 +221,36 @@ class GameClock:
         # print(self.moves_duration)
         # print(mean, std)
         return random.gauss(mean, std)
+
+
+class LedManager:
+    def __init__(self):
+        self.last_message = None
+        self.last_flash_message = None
+        self.flash_clock = None
+        self.counter = 0
+
+    def flash_leds(self, message):
+        # New message
+        if self.last_flash_message != message:
+            self.last_flash_message = message
+            self.flash_clock = pygame.time.get_ticks()
+            self.counter = 0
+            self.set_leds(message)
+            return
+
+        # Flash message on/off ever 1000 ms
+        elapsed_time = pygame.time.get_ticks()
+        if elapsed_time - self.flash_clock > 1000:
+            self.flash_clock = elapsed_time
+            self.counter += 1
+            message = (self.last_flash_message, '\x00' * 8)[self.counter % 2]
+            self.set_leds(message)
+
+    def set_leds(self, message='\x00' * 8):
+        if message != self.last_message:
+            self.last_message = message
+            sock.sendto(message, SEND_SOCKET)
 
 
 def make_publisher():
@@ -708,25 +738,15 @@ waiting_for_user_move = False
 new_setup = False
 current_engine_page = 0
 
-class LedManager:
-    def __init__(self):
-        self.last_message = None
-
-    def send_leds(self, message='\x00' * 8):
-        if message == self.last_message:
-            return
-        self.last_message = message
-        sock.sendto(message, SEND_SOCKET)
-
 led_manager = LedManager()
-led_manager.send_leds('\xff' * 8)
+led_manager.set_leds('\xff' * 8)
 
 scr.fill(white)  # clear screen
 show("start-up-logo", 7, 0)
 pygame.display.flip()  # copy to screen
 if not DEBUG_FAST:
     tt.sleep(2)
-led_manager.send_leds()
+led_manager.set_leds()
 
 poweroff_time = datetime.now()
 
@@ -853,7 +873,7 @@ while True:
 
             if 6 < x < 123 and 150 < y < 190:  # new game pressed
                 window = "new game"
-                led_manager.send_leds()
+                led_manager.set_leds()
 
             if 6 < x < 163 and 191 < y < 222:  # resume pressed
                 window = "resume"
@@ -1137,7 +1157,7 @@ while True:
                                             for square in range(64):
                                                 if chessboard.piece_at(square) != physical_board.piece_at(square):
                                                     diffs.append(chess.SQUARE_NAMES[square])
-                                            led_manager.send_leds(codes.squares2led(diffs, rotate180))
+                                            led_manager.set_leds(codes.squares2led(diffs, rotate180))
                                         terminal_print("Invalid move")
 
                                 else:
@@ -1158,17 +1178,19 @@ while True:
                             if DEBUG:
                                 logging.info("All pieces on right places")
                             # TODO: Avoid expensive recalculations (time_gap)
+                            # Save calculated squares in codes.squares2led inside a dictionary to avoid repeating computation
+
                             # is_check leds
                             if chessboard.is_check():
                                 # Find king on check
                                 checked_king_square = chess.SQUARE_NAMES[chessboard.king(chessboard.turn)]
-                                led_manager.send_leds(codes.squares2led([checked_king_square], rotate180))
+                                led_manager.set_leds(codes.squares2led([checked_king_square], rotate180))
                             # time warning leds
                             elif game_clock.time_warning():
-                                led_manager.send_leds(codes.squares2led(['a1', 'a8', 'h1', 'h8']))
+                                led_manager.flash_leds(codes.squares2led(['a1', 'a8', 'h1', 'h8']))
                             # no leds
                             else:
-                                led_manager.send_leds()
+                                led_manager.set_leds()
 
                             banner_right_places = False
                             banner_place_pieces = False
@@ -1327,6 +1349,9 @@ while True:
                         game_overtime = game_clock.update()
                         game_clock.display()
 
+                        # AI thinking leds
+                        led_manager.flash_leds(codes.squares2led(['d4', 'e4', 'd5', 'e5']))
+
                         txt_large("Analysing...", 227 + 55, 77 + 8, grey)
                         if not rom:
                             show("force-move", 247, 77 + 39)
@@ -1347,11 +1372,6 @@ while True:
                                 got_fast_result = True
                             break
 
-                        # AI thinking leds
-                        led_manager.send_leds(codes.squares2led(['d4', 'e4', 'd5', 'e5']))
-
-                        # tt.sleep(0.5)
-
                     if not got_fast_result:
                         if not rom:
                             ai_move = proc.best_move.lower()
@@ -1359,24 +1379,9 @@ while True:
                             ai_move = rom_engine.best_move
 
                 if not game_overtime:
+                    led_manager.set_leds(codes.move2led(ai_move, rotate180))
                     play_sound('move')
                     logging.info("AI move: %s", ai_move)
-
-                    led_manager.send_leds(codes.move2led(ai_move, rotate180))
-                    # # highlight right LED
-                    # i, value, i_source, value_source = codes.move2led(ai_move, rotate180)  # error here if checkmate before
-                    # message = ""
-                    # for j in range(8):
-                    #     if j != i and j != i_source:
-                    #         message += chr(0)
-                    #     elif j == i and j == i_source:
-                    #         message += chr(value + value_source)
-                    #     elif j == i:
-                    #         message += chr(value)
-                    #     else:
-                    #         message += chr(value_source)
-                    #
-                    # led_manager.send_leds(message)
 
                     # banner_do_move = True
                     if not args.robust:
@@ -1399,7 +1404,6 @@ while True:
 
                     if chessboard.is_check(): # AI CHECK
                         terminal_print(" check!", False)
-
 
                     if chessboard.is_checkmate():
                         logging.info("mate!")
