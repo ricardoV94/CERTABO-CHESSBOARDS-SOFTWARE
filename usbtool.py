@@ -11,7 +11,7 @@ from select import *
 from socket import *
 from utils import port2udp, port2number
 
-DEBUG = True
+DEBUG = False
 
 print("--- usbtool started ---")
 

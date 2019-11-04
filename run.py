@@ -3,7 +3,7 @@ import sys
 import argparse
 
 DEBUG = False
-DEBUG_FAST = True
+DEBUG_FAST = False
 
 TO_EXE = getattr(sys, "frozen", False)
 
