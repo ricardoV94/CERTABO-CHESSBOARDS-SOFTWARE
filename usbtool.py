@@ -11,7 +11,7 @@ from select import *
 from socket import *
 from utils import port2udp, port2number
 
-DEBUG = False
+DEBUG = True
 
 print("--- usbtool started ---")
 
@@ -28,7 +28,7 @@ print('USBTOOL: Board listen port: %s, gui listen port: %s' % (board_listen_port
 
 serial_ok = False
 try:
-    serial_port = serial.Serial(args.port, 38400, timeout=2.5)  # 0-COM1, 1-COM2 / speed /
+    serial_port = serial.Serial(args.port, 38400, timeout=2.5, write_timeout=5)  # 0-COM1, 1-COM2 / speed /
     serial_ok = True
     serial_port.flushInput()
 except Exception as e:
@@ -37,7 +37,7 @@ except Exception as e:
 
 if not serial_ok:
     try:
-        serial_port = serial.Serial(args.port, 38400, timeout=2.5)  # 0-COM1, 1-COM2 / speed /
+        serial_port = serial.Serial(args.port, 38400, timeout=2.5, write_timeout=5)  # 0-COM1, 1-COM2 / speed /
         serial_ok = True
         serial_port.flushInput()
     except Exception as e:
@@ -61,9 +61,12 @@ while True:
     # Try to reconnect to board
     if not serial_ok:
         try:
-            serial_port = serial.Serial(args.port, 38400, timeout=2.5)
-            serial_ok = True
+            if serial_port.is_open:
+                serial_port.close()
+            serial_port = serial.Serial(args.port, 38400, timeout=2.5, write_timeout=5)
             serial_port.flushInput()
+            serial_ok = True
+            print('Reconnected to serial port')
         except Exception as e:
             print("Cannot open Serial at ", args.port)
             print(str(e))
@@ -79,10 +82,10 @@ while True:
             continue
 
         try:
-            serial_port.write(data)
             if DEBUG:
                 # print("sending to usb data with length =", len(data))
-                print('sending:', [ord(d) for d in data])
+                print('sending to board:', [ord(d) for d in data], len(data))
+            serial_port.write(data)
         except Exception as e:
             print('Could not write to Serial port:', str(e))
             serial_ok = False

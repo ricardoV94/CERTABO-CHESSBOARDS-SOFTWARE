@@ -4,6 +4,7 @@ import argparse
 
 DEBUG = False
 DEBUG_FAST = False
+DEBUG_LED = True
 
 TO_EXE = getattr(sys, "frozen", False)
 
@@ -249,6 +250,8 @@ class LedManager:
 
     def set_leds(self, message='\x00' * 8):
         if message != self.last_message:
+            if DEBUG_LED:
+                print('sending to usbtool:', [ord(d) for d in message], len(message))
             self.last_message = message
             sock.sendto(message, SEND_SOCKET)
 
